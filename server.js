@@ -4,9 +4,22 @@ const axios = require('axios');
 const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const https = require('https');
 
 const app = express();
 const runtime = new VeneraRuntime();
+
+// 配置 HTTP/HTTPS Agent，复用连接并防止 ECONNRESET
+const agentOptions = {
+    keepAlive: true,
+    keepAliveMsecs: 1000,
+    maxSockets: 50,
+    maxFreeSockets: 10,
+    timeout: 60000 // socket timeout
+};
+const httpAgent = new http.Agent(agentOptions);
+const httpsAgent = new https.Agent(agentOptions);
 
 // 漫画源文件目录
 const SOURCES_DIR = path.join(__dirname, 'sources');
@@ -395,27 +408,58 @@ app.get('/image-proxy', async (req, res) => {
             referer = 'https://www.copymanga.site/';
         }
 
-        // 下载图片
-        const response = await axios.get(imageUrl, {
-            responseType: 'arraybuffer',
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.0',
-                'Referer': referer
-            },
-            timeout: 30000,
-            validateStatus: () => true
-        });
+        // 下载图片，增加重试机制
+        let response;
+        let attempt = 0;
+        const maxAttempts = 3;
+        
+        while (attempt < maxAttempts) {
+            try {
+                attempt++;
+                response = await axios.get(imageUrl, {
+                    responseType: 'arraybuffer',
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.0',
+                        'Referer': referer
+                    },
+                    timeout: 30000,
+                    httpAgent: httpAgent,
+                    httpsAgent: httpsAgent,
+                    validateStatus: () => true
+                });
+                
+                if (response.status >= 200 && response.status < 300) {
+                    break;
+                }
+                
+                // 如果是 404 或 403，通常不重试
+                if (response.status === 404 || response.status === 403) {
+                     console.warn(`Image proxy HTTP ${response.status} for ${imageUrl}`);
+                     return res.status(response.status).json({ error: `Failed to load image: ${response.status}` });
+                }
+                
+                console.warn(`Attempt ${attempt} failed with status ${response.status} for ${imageUrl}`);
+            } catch (err) {
+                console.warn(`Attempt ${attempt} failed with error ${err.message} for ${imageUrl}`);
+                if (attempt >= maxAttempts) throw err;
+            }
+            
+            // 简单的指数退避
+            if (attempt < maxAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+            }
+        }
 
-        // 检查响应状态
-        if (response.status < 200 || response.status >= 300) {
-            console.warn(`Image proxy HTTP ${response.status} for ${imageUrl}`);
-            return res.status(response.status).json({ error: `Failed to load image: ${response.status}` });
+        if (!response || response.status >= 300) {
+            return res.status(502).json({ error: 'Failed to load image after retries' });
         }
 
         const contentType = response.headers['content-type'] || 'image/jpeg';
 
-        // 如果是 GIF 或者不需要处理，直接返回
-        if (contentType.includes('gif') || (width === 0 && quality === 100)) {
+        // 如果是 GIF，直接返回（保留动画）
+        // 如果是其他非 WebP 格式且不需要调整，直接返回
+        // WebP 强制转换为 JPEG/PNG
+        if (contentType.includes('gif') || (!contentType.includes('webp') && width === 0 && quality === 100)) {
             res.set('Content-Type', contentType);
             res.set('Cache-Control', 'public, max-age=86400');
             return res.send(response.data);
@@ -432,12 +476,11 @@ app.get('/image-proxy', async (req, res) => {
         // 根据格式输出
         let outputBuffer;
         if (contentType.includes('png')) {
+            // PNG 保持 PNG
             outputBuffer = await image.png({ quality }).toBuffer();
             res.set('Content-Type', 'image/png');
-        } else if (contentType.includes('webp')) {
-            outputBuffer = await image.webp({ quality }).toBuffer();
-            res.set('Content-Type', 'image/webp');
         } else {
+            // 其他格式（包括 WebP、JPEG）统一转换为 JPEG
             outputBuffer = await image.jpeg({ quality }).toBuffer();
             res.set('Content-Type', 'image/jpeg');
         }

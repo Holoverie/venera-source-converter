@@ -82,11 +82,20 @@ async function processImageRequest(req, res) {
   try {
     activeImageRequests++;
 
-    const imageUrl = req.query.url;
+    let imageUrl = req.query.url;
     if (!imageUrl) {
       console.log(`[图片请求 ${requestId}] 失败 - 缺少url参数`);
       return res.status(400).json({ error: "缺少url参数" });
     }
+
+    // 自动补全协议
+    if (imageUrl.startsWith("//")) {
+      imageUrl = "https:" + imageUrl;
+    } else if (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://")) {
+      imageUrl = "https://" + imageUrl;
+    }
+
+    // 根据 URL 确定 Referer
 
     const targetWidth = parseInt(req.query.width) || 600;
     const quality = parseInt(req.query.quality) || 50;
@@ -457,13 +466,16 @@ app.get("/comic/:id", async (req, res) => {
       finalPageCount = 0;
     }
 
+    // 构建基础 URL
+    const baseUrl = getBaseUrl(req);
+
     const response = {
       item_id: comicDetails.id,
       name: comicDetails.title,
       page_count: finalPageCount,
       views: 0,
       rate: comicDetails.stars || 0,
-      cover: comicDetails.cover,
+      cover: `${baseUrl}/proxy?url=${comicDetails.cover}&width=200`,
       tags: tags,
       total_chapters: finalTotalChapters,
     };
@@ -610,6 +622,9 @@ app.get("/search/:text/:page", async (req, res) => {
       parseInt(page),
     );
 
+    // 构建基础 URL
+    const baseUrl = getBaseUrl(req);
+
     // 转换为项目格式
     const response = {
       page: parseInt(page),
@@ -617,7 +632,7 @@ app.get("/search/:text/:page", async (req, res) => {
       results: searchResult.comics.map((comic) => ({
         comic_id: comic.id,
         title: comic.title,
-        cover_url: comic.cover,
+        cover_url: `${baseUrl}/proxy?url=${comic.cover}&width=200`,
         pages: 0,
       })),
     };

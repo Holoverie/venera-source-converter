@@ -99,6 +99,12 @@ const APP = {
     version: '2.1.0'
 };
 
+// 模拟 sendMessage 全局函数
+global.sendMessage = (msg) => {
+    // 简单模拟，返回 null 或默认值
+    return null;
+};
+
 class ComicSource {
     constructor() {
         this.name = '';

@@ -25,6 +25,29 @@ process.on("unhandledRejection", (reason, promise) => {
 const app = express();
 const runtime = new VeneraRuntime();
 
+// 辅助函数：构建基础 URL
+function getBaseUrl(req) {
+  let protocol = req.headers["x-forwarded-proto"] || req.protocol;
+  const host = req.get("host");
+  let cleanHost = host;
+
+  if (host.includes(":")) {
+    const [hostname, port] = host.split(":");
+    // 如果端口是 443，强制协议为 https 并移除端口
+    if (port === "443") {
+      protocol = "https";
+      cleanHost = hostname;
+    }
+    // 如果端口是 80，强制协议为 http 并移除端口
+    else if (port === "80") {
+      protocol = "http";
+      cleanHost = hostname;
+    }
+  }
+
+  return `${protocol}://${cleanHost}`;
+}
+
 // 漫画源文件目录
 const SOURCES_DIR = path.join(__dirname, "sources");
 
@@ -65,14 +88,6 @@ async function processImageRequest(req, res) {
       return res.status(400).json({ error: "缺少url参数" });
     }
 
-    // 根据 URL 确定 Referer
-    // let referer = 'https://nhentai.net/';
-    // if (imageUrl.includes('mangadex.org')) {
-    //     referer = 'https://mangadex.org/';
-    // } else if (imageUrl.includes('copymanga')) {
-    //     referer = 'https://www.copymanga.site/';
-    // }
-
     const targetWidth = parseInt(req.query.width) || 600;
     const quality = parseInt(req.query.quality) || 50;
 
@@ -83,10 +98,6 @@ async function processImageRequest(req, res) {
     const downloadStart = Date.now();
     const response = await axios.get(imageUrl, {
       responseType: "arraybuffer",
-      // headers: {
-      //     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.0',
-      //     'Referer': referer
-      // },
       timeout: 30000,
       maxContentLength: 50 * 1024 * 1024,
       maxRedirects: 3,
@@ -355,27 +366,11 @@ app.get("/config", (req, res) => {
     const source = runtime.getSource(sourceInfo.name);
     if (source) {
       // 构建配置
-      let protocol = req.headers["x-forwarded-proto"] || req.protocol;
-      const host = req.get("host");
-      let cleanHost = host;
-      
-      if (host.includes(":")) {
-        const [hostname, port] = host.split(":");
-        // 如果端口是 443，强制协议为 https 并移除端口
-        if (port === "443") {
-            protocol = "https";
-            cleanHost = hostname;
-        } 
-        // 如果端口是 80，强制协议为 http 并移除端口
-        else if (port === "80") {
-            protocol = "http";
-            cleanHost = hostname;
-        }
-      }
+      const apiUrl = getBaseUrl(req);
 
       const sourceConfig = {
         name: source.name,
-        apiUrl: `${protocol}://${cleanHost}`,
+        apiUrl: apiUrl,
         detailPath: `/comic/<id>?source=${encodeURIComponent(source.name)}`,
         photoPath: `/photo/<id>/chapter/<chapter>?source=${encodeURIComponent(source.name)}`,
         searchPath: `/search/<text>/<page>?source=${encodeURIComponent(source.name)}`,
@@ -556,15 +551,13 @@ app.get("/photo/:id/chapter/:chapter", async (req, res) => {
     const epData = await source.comic.loadEp(id, epId);
 
     // 构建基础 URL
-    const protocol = req.headers["x-forwarded-proto"] || req.protocol;
-    const host = req.headers["x-forwarded-host"] || req.headers.host;
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = getBaseUrl(req);
 
     // 转换为项目格式，添加代理 URL
     const response = {
       title: `Comic ${id}`,
       images: epData.images.map((url, index) => ({
-        url: `${baseUrl}/image-proxy?url=${encodeURIComponent(url)}&width=${width}&quality=${quality}`,
+        url: `${baseUrl}/proxy?url=${url}&width=${width}&quality=${quality}`,
       })),
     };
 
@@ -637,7 +630,7 @@ app.get("/search/:text/:page", async (req, res) => {
 });
 
 // 图片代理端点
-app.get("/image-proxy", (req, res) => {
+app.get("/proxy", (req, res) => {
   if (imageRequestQueue.length >= MAX_QUEUE_SIZE) {
     return res.status(429).json({ error: "请求过多，请稍后再试" });
   }

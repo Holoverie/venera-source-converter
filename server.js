@@ -632,7 +632,7 @@ app.get("/search/:text/:page", async (req, res) => {
       results: searchResult.comics.map((comic) => ({
         comic_id: comic.id,
         title: comic.title,
-        cover_url: `${baseUrl}/proxy?url=${comic.cover}&width=200`,
+        cover_url: `${baseUrl}/proxy?url=${comic.cover}&width=100`,
         pages: 0,
       })),
     };

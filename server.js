@@ -360,7 +360,7 @@ loadAllSources()
       `\nServer ready! Loaded ${sources.length} source(s): ${sources.map((s) => s.name).join(", ") || "None"}`,
     );
 
-    // 定时刷新源（每20分钟），以更新动态配置（如CopyManga的base_url）
+    // 定时刷新源，以更新动态配置（如CopyManga的base_url）
     setInterval(async () => {
       console.log("Running periodic source refresh...");
       for (const sourceInfo of loadedSources) {

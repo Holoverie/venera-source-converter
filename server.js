@@ -95,22 +95,67 @@ async function processImageRequest(req, res) {
       imageUrl = "https://" + imageUrl;
     }
 
-    // 根据 URL 确定 Referer
+    // 获取源特定的 Headers
+    let requestHeaders = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.0'
+    };
 
-    const targetWidth = parseInt(req.query.width) || 600;
-    const quality = parseInt(req.query.quality) || 50;
+    const sourceName = req.query.source;
+    if (sourceName) {
+        const source = runtime.getSource(sourceName);
+        if (source) {
+            // 尝试获取源的 headers
+            // 1. 尝试 headers getter
+            if (source.headers) {
+                try {
+                    // source.headers 可能是 getter，直接访问即可
+                    const sourceHeaders = source.headers;
+                    if (sourceHeaders) {
+                        // 过滤掉 content-length 和 host 等可能冲突的 headers
+                        const cleanHeaders = { ...sourceHeaders };
+                        delete cleanHeaders['content-length'];
+                        delete cleanHeaders['host'];
+                        delete cleanHeaders['connection'];
+                        
+                        Object.assign(requestHeaders, cleanHeaders);
+                    }
+                } catch (e) {
+                    console.warn(`Failed to get headers from source ${sourceName}:`, e.message);
+                }
+            }
+            
+            // 2. 如果源有 onImageLoad 方法，也可以尝试调用它获取配置
+            // 注意：这需要 comicId 和 epId
+            /*
+            const comicId = req.query.comicId;
+            const epId = req.query.epId;
+            if (source.comic && source.comic.onImageLoad) {
+                try {
+                    const config = await Promise.resolve(source.comic.onImageLoad(imageUrl, comicId, epId));
+                    if (config && config.headers) {
+                        Object.assign(requestHeaders, config.headers);
+                    }
+                } catch (e) {
+                    console.warn(`Failed to get image load config from source ${sourceName}:`, e.message);
+                }
+            }
+            */
+        }
+    }
 
-    console.log(
-      `[图片请求 ${requestId}] 下载图片 - 目标宽度: ${targetWidth}, 质量: ${quality}`,
-    );
+    const targetWidth = parseInt(req.query.width) || 600
+    const quality = parseInt(req.query.quality) || 50
 
-    const downloadStart = Date.now();
+    console.log(`[图片请求 ${requestId}] 下载图片 - 目标宽度: ${targetWidth}, 质量: ${quality}`)
+
+    const downloadStart = Date.now()
     const response = await axios.get(imageUrl, {
       responseType: "arraybuffer",
+      headers: requestHeaders,
       timeout: 30000,
       maxContentLength: 50 * 1024 * 1024,
-      maxRedirects: 3,
-    });
+      maxRedirects: 3
+    })
     const downloadTime = Date.now() - downloadStart;
 
     console.log(
@@ -314,6 +359,22 @@ loadAllSources()
     console.log(
       `\nServer ready! Loaded ${sources.length} source(s): ${sources.map((s) => s.name).join(", ") || "None"}`,
     );
+
+    // 定时刷新源（每20分钟），以更新动态配置（如CopyManga的base_url）
+    setInterval(async () => {
+      console.log("Running periodic source refresh...");
+      for (const sourceInfo of loadedSources) {
+        const source = runtime.getSource(sourceInfo.name);
+        if (source && typeof source.init === "function") {
+          try {
+            await Promise.resolve(source.init());
+            console.log(`Refreshed source: ${source.name}`);
+          } catch (e) {
+            console.warn(`Failed to refresh source ${source.name}:`, e.message);
+          }
+        }
+      }
+    }, 60 * 1000);
   })
   .catch((err) => {
     console.error("Failed to load sources:", err);

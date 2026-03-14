@@ -30,27 +30,42 @@ class Network {
      * @returns {Promise<{status: number, headers: object, body: ArrayBuffer}>}
      */
     static async fetchBytes(method, url, headers = {}, data = null) {
-        try {
-            const response = await axios({
-                method: method.toLowerCase(),
-                url,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.0',
-                    ...headers
-                },
-                data: data ? Buffer.from(data) : undefined,
-                responseType: 'arraybuffer',
-                timeout: 30000,
-                validateStatus: () => true
-            });
+        let attempts = 0;
+        const maxAttempts = 3;
+        
+        while (attempts < maxAttempts) {
+            attempts++;
+            try {
+                const response = await axios({
+                    method: method.toLowerCase(),
+                    url,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.0',
+                        'Connection': 'close', // 禁用 keep-alive 防止 socket hang up
+                        ...headers
+                    },
+                    httpAgent: new (require('http').Agent)({ keepAlive: false }),
+                    httpsAgent: new (require('https').Agent)({ keepAlive: false }),
+                    data: data ? Buffer.from(data) : undefined,
+                    responseType: 'arraybuffer',
+                    timeout: 30000,
+                    validateStatus: () => true
+                });
 
-            return {
-                status: response.status,
-                headers: response.headers,
-                body: response.data
-            };
-        } catch (error) {
-            throw new Error(`Network error: ${error.message}`);
+                return {
+                    status: response.status,
+                    headers: response.headers,
+                    body: response.data
+                };
+            } catch (error) {
+                // 如果是 socket hang up 或其他网络错误，且未达到最大重试次数，则重试
+                if (attempts < maxAttempts && (error.code === 'ECONNRESET' || error.message.includes('socket hang up'))) {
+                    console.warn(`Network error (${error.message}) for ${url}. Retrying attempt ${attempts + 1}...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000 * attempts)); // 指数退避
+                    continue;
+                }
+                throw new Error(`Network error: ${error.message}`);
+            }
         }
     }
 

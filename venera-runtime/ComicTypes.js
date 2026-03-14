@@ -34,7 +34,8 @@ class ComicDetails {
         subId = null,
         chapters = null,
         stars = 0,
-        status = ''
+        status = '',
+        maxPage = null
     }) {
         this.id = id;
         this.title = title;
@@ -51,6 +52,7 @@ class ComicDetails {
         this.chapters = chapters;
         this.stars = stars;
         this.status = status;
+        this.maxPage = maxPage;
     }
 }
 

@@ -96,7 +96,7 @@ const { Comic, ComicDetails, Comment } = require(${JSON.stringify(path.join(runt
 // APP 全局对象模拟
 const APP = {
     locale: 'zh_CN',
-    version: '1.0.0'
+    version: '2.1.0'
 };
 
 class ComicSource {

@@ -173,15 +173,50 @@ app.get('/comic/:id', async (req, res) => {
             }
         }
 
+        // Calculate total chapters
+        let totalChapters = 0;
+        if (comicDetails.chapters) {
+            if (comicDetails.chapters instanceof Map) {
+                for (const val of comicDetails.chapters.values()) {
+                    if (val instanceof Map) {
+                        totalChapters += val.size;
+                    } else {
+                        totalChapters++;
+                    }
+                }
+            } else if (typeof comicDetails.chapters === 'object') {
+                 totalChapters = Object.keys(comicDetails.chapters).length;
+            }
+        }
+
+        // Handle page count and chapter count logic:
+        // - If it's a oneshot/single chapter (totalChapters <= 1): return page_count (if available) and total_chapters = 1
+        // - If it's a multi-chapter comic (totalChapters > 1): return total_chapters and page_count = 0
+        let finalPageCount = 0;
+        let finalTotalChapters = totalChapters > 0 ? totalChapters : 1;
+
+        if (finalTotalChapters <= 1) {
+            // It's a single chapter, try to find the page count
+            if (comicDetails.thumbnails && comicDetails.thumbnails.length > 0) {
+                finalPageCount = comicDetails.thumbnails.length;
+            } else if (comicDetails.maxPage !== null && comicDetails.maxPage !== undefined) {
+                finalPageCount = comicDetails.maxPage;
+            }
+            finalTotalChapters = 1; // Ensure it's exactly 1
+        } else {
+            // It's a multi-chapter comic, do not return page count
+            finalPageCount = 0;
+        }
+
         const response = {
             item_id: comicDetails.id,
             name: comicDetails.title,
-            page_count: comicDetails.thumbnails ? comicDetails.thumbnails.length : 0,
+            page_count: finalPageCount,
             views: 0,
-            rate: 0,
+            rate: comicDetails.stars || 0,
             cover: comicDetails.cover,
             tags: tags,
-            total_chapters: 1 // nhentai 等通常是单章节
+            total_chapters: finalTotalChapters
         };
 
         res.json(response);
@@ -228,18 +263,28 @@ app.get('/photo/:id/chapter/:chapter', async (req, res) => {
                         let currentIndex = 0;
                         let foundId = null;
 
-                        // 处理 Map 结构（卷 -> 章节 Map）
-                        for (const [volume, volumeChapters] of comicDetails.chapters) {
-                            if (volumeChapters instanceof Map) {
-                                for (const [chId, chTitle] of volumeChapters) {
+                        // Handle Map structure (Volume -> Chapter Map OR Chapter Id -> Title)
+                        if (comicDetails.chapters instanceof Map) {
+                            for (const [key, value] of comicDetails.chapters) {
+                                if (value instanceof Map) {
+                                    // Nested Map: key is volume name, value is chapters map
+                                    for (const [chId, chTitle] of value) {
+                                        if (currentIndex === chapterIndex) {
+                                            foundId = chId;
+                                            break;
+                                        }
+                                        currentIndex++;
+                                    }
+                                } else {
+                                    // Flat Map: key is chapter id, value is title
                                     if (currentIndex === chapterIndex) {
-                                        foundId = chId;
+                                        foundId = key;
                                         break;
                                     }
                                     currentIndex++;
                                 }
+                                if (foundId) break;
                             }
-                            if (foundId) break;
                         }
 
                         if (foundId) {

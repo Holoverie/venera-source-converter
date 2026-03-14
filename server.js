@@ -497,7 +497,18 @@ app.get('/image-proxy', async (req, res) => {
 });
 
 // 启动服务器
-const PORT = process.env.PORT || 3000;
+// 获取命令行参数中的端口号
+const args = process.argv.slice(2);
+let portFromArgs = null;
+for (const arg of args) {
+    const parsed = parseInt(arg, 10);
+    if (!isNaN(parsed) && parsed > 0 && parsed < 65536) {
+        portFromArgs = parsed;
+        break;
+    }
+}
+
+const PORT = portFromArgs || process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Venera Source Converter running on port ${PORT}`);
     console.log(`Please place your .js source files in: ${SOURCES_DIR}`);

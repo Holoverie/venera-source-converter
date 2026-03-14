@@ -565,9 +565,76 @@ app.get("/photo/:id/chapter/:chapter", async (req, res) => {
     // 构建基础 URL
     const baseUrl = getBaseUrl(req);
 
+    // 确定章节标题
+    let chapterTitle = `Comic ${id}`;
+    
+    // 如果之前成功获取了漫画详情
+    if (source.comic.loadInfo) {
+        try {
+            // 尝试从缓存或重新获取详情来拿到标题
+            // 这里为了性能，如果有必要可以缓存 comicDetails
+            // 简单起见，我们尝试从 comicDetails 中查找章节名
+            // 注意：这里我们无法直接访问上面的 comicDetails 变量，因为它在 if 块里
+            // 所以我们需要一个更健壮的方式来获取标题
+            
+            // 重新获取一下详情（虽然有点浪费，但为了准确性）
+            // 实际上，为了性能，我们最好只在必要时获取
+            // 更好的做法是：如果前端能传标题最好，但不能。
+            
+            // 让我们尝试解析章节名
+            // 如果是纯数字章节号
+            if (/^\d+$/.test(chapter)) {
+                 chapterTitle = `Ch ${chapter}`;
+            } else {
+                 chapterTitle = chapter; // 使用章节ID作为标题
+            }
+            
+            // 尝试获取漫画详情以获得更准确的标题（如果是单篇）
+            try {
+                const comicDetails = await source.comic.loadInfo(id);
+                
+                // 计算总章节数判断是否为单篇
+                let totalChapters = 0;
+                let foundChapterTitle = null;
+                
+                if (comicDetails.chapters) {
+                    if (comicDetails.chapters instanceof Map) {
+                        for (const [key, value] of comicDetails.chapters) {
+                            if (value instanceof Map) {
+                                totalChapters += value.size;
+                                // 查找章节标题
+                                if (value.has(epId)) foundChapterTitle = value.get(epId);
+                            } else {
+                                totalChapters++;
+                                // 扁平 Map，key 是 id
+                                if (key === epId) foundChapterTitle = value;
+                            }
+                        }
+                    } else if (typeof comicDetails.chapters === 'object') {
+                        totalChapters = Object.keys(comicDetails.chapters).length;
+                        if (comicDetails.chapters[epId]) foundChapterTitle = comicDetails.chapters[epId];
+                    }
+                }
+                
+                // 如果是单篇（章节数 <= 1），直接使用漫画标题
+                if (totalChapters <= 1) {
+                    chapterTitle = comicDetails.title;
+                } else if (foundChapterTitle) {
+                    // 如果是多章节且找到了章节标题，使用章节标题
+                    chapterTitle = foundChapterTitle;
+                }
+            } catch (e) {
+                // 获取详情失败，降级使用默认标题
+                console.warn('Failed to load comic details for title:', e.message);
+            }
+        } catch (e) {
+            // 忽略错误
+        }
+    }
+
     // 转换为项目格式，添加代理 URL
     const response = {
-      title: `Comic ${id}`,
+      title: chapterTitle,
       images: epData.images.map((url, index) => ({
         url: `${baseUrl}/proxy?url=${url}&width=${width}&quality=${quality}`,
       })),

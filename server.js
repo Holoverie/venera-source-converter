@@ -470,7 +470,7 @@ app.get("/comic/:id", async (req, res) => {
     const baseUrl = getBaseUrl(req);
 
     const response = {
-      item_id: comicDetails.id,
+      item_id: comicDetails.id || id, // 优先使用源返回的 ID，如果没有则使用请求参数中的 ID
       name: comicDetails.title,
       page_count: finalPageCount,
       views: 0,

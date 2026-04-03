@@ -177,6 +177,7 @@ module.exports = ${sourceClassName};
         // 写入临时文件
         const os = require('os');
         const tempFile = path.join(os.tmpdir(), `temp_${Date.now()}.js`);
+        fs.writeFileSync(tempFile, moduleCode);
         
         try {
             // 加载模块

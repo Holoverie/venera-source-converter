@@ -707,8 +707,8 @@ app.get("/photo/:id/chapter/:chapter", async (req, res) => {
 
     res.json(response);
   } catch (error) {
-    console.error("Error loading episode:", error);
-    res.status(500).json({ error: error.message });
+    console.error("Error loading episode:", error.stack || error);
+    res.status(500).json({ error: error.message, stack: error.stack });
   }
 });
 

@@ -1050,7 +1050,7 @@ class ManHuaGui extends ComicSource {
     if (scripts.length < 5) {
       throw new Error(`Expected at least 5 script tags, found ${scripts.length}`);
     }
-  let script = scripts[4].innerHTML;
+  let script = scripts[4].innerHtml;
   console.log(`Script content preview (first 500 chars): ${script.substring(0, 500)}`);
   let infos = this.getImgInfos(script);
 

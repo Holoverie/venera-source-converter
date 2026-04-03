@@ -353,9 +353,11 @@ function setDefaultSettings(source) {
 
 // 初始化加载（异步）
 let loadedSources = [];
+let sourcesLoaded = false;
 loadAllSources()
   .then((sources) => {
     loadedSources = sources;
+    sourcesLoaded = true;
     console.log(
       `\nServer ready! Loaded ${sources.length} source(s): ${sources.map((s) => s.name).join(", ") || "None"}`,
     );
@@ -378,6 +380,7 @@ loadAllSources()
   })
   .catch((err) => {
     console.error("Failed to load sources:", err);
+    sourcesLoaded = true;
   });
 
 // 中间件
@@ -429,7 +432,8 @@ app.post("/reload", async (req, res) => {
 });
 
 // Config 端点 - 返回所有漫画源配置
-app.get("/config", (req, res) => {
+app.get("/config", async (req, res) => {
+  if (!sourcesLoaded) await loadPromise;  // 等待源加载完成
   const config = {};
 
   for (const sourceInfo of loadedSources) {

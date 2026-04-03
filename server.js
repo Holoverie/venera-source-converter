@@ -803,3 +803,5 @@ app.listen(PORT, () => {
   console.log(`Please place your .js source files in: ${SOURCES_DIR}`);
   console.log("Loading sources...");
 });
+
+module.exports = app;

@@ -376,7 +376,17 @@ class ManHuaGui extends ComicSource {
     }
 
     function extractParams(str) {
-      let params_part = str.split("}(")[1].split("))")[0];
+      if (!str || !str.includes("}(") || !str.includes("))")) {
+        throw new Error("Invalid script format: missing expected patterns in script content");
+      }
+      let parts = str.split("}(");
+      if (parts.length < 2) {
+        throw new Error("Invalid script format: cannot split by }(");
+      }
+      let params_part = parts[1].split("))")[0];
+      if (!params_part) {
+        throw new Error("Invalid script format: empty params_part");
+      }
       let params = splitParams(params_part);
       params[5] = {};
       params[3] = LZString.decompressFromBase64(params[3].split("'")[1]).split(

@@ -354,7 +354,7 @@ function setDefaultSettings(source) {
 // 初始化加载（异步）
 let loadedSources = [];
 let sourcesLoaded = false;
-loadAllSources()
+const loadPromise = loadAllSources()
   .then((sources) => {
     loadedSources = sources;
     sourcesLoaded = true;

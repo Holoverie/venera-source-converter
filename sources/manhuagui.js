@@ -1043,10 +1043,16 @@ class ManHuaGui extends ComicSource {
      * @returns {Promise<{images: string[]}>}
      */
     loadEp: async (comicId, epId) => {
-      let url = `${this.baseUrl}/comic/${comicId}/${epId}.html`;
-      let document = await this.getHtml(url);
-      let script = document.querySelectorAll("script")[4].innerHTML;
-      let infos = this.getImgInfos(script);
+    let url = `${this.baseUrl}/comic/${comicId}/${epId}.html`;
+    let document = await this.getHtml(url);
+    let scripts = document.querySelectorAll("script");
+    console.log(`Found ${scripts.length} script tags`);
+    if (scripts.length < 5) {
+      throw new Error(`Expected at least 5 script tags, found ${scripts.length}`);
+    }
+  let script = scripts[4].innerHTML;
+  console.log(`Script content preview (first 500 chars): ${script.substring(0, 500)}`);
+  let infos = this.getImgInfos(script);
 
       let imgDomain = `https://us.hamreus.com`;
       let images = [];

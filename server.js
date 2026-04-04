@@ -57,6 +57,33 @@ const MAX_QUEUE_SIZE = 50;
 let activeImageRequests = 0;
 const imageRequestQueue = [];
 
+// 章节页数缓存 - 提高 page_count 计算效率
+const pageCountCache = new Map(); // key: `${sourceName}:${comicId}:${epId}`, value: { pageCount, timestamp }
+const PAGE_COUNT_CACHE_TTL = 30 * 60 * 1000; // 30分钟缓存
+const MAX_PAGE_CACHE_SIZE = 1000; // 最大缓存条目数
+
+// 缓存管理函数
+function addToPageCountCache(key, pageCount) {
+  // 如果缓存超过最大大小，删除最旧的条目
+  if (pageCountCache.size >= MAX_PAGE_CACHE_SIZE) {
+    const oldestKey = pageCountCache.keys().next().value;
+    pageCountCache.delete(oldestKey);
+  }
+  pageCountCache.set(key, { pageCount, timestamp: Date.now() });
+}
+
+function getFromPageCountCache(key) {
+  const cached = pageCountCache.get(key);
+  if (cached && Date.now() - cached.timestamp < PAGE_COUNT_CACHE_TTL) {
+    return cached.pageCount;
+  }
+  // 缓存过期，删除
+  if (cached) {
+    pageCountCache.delete(key);
+  }
+  return null;
+}
+
 function processNextImageRequest() {
   if (
     activeImageRequests < MAX_CONCURRENT_IMAGE_REQUESTS &&
@@ -529,8 +556,11 @@ app.get("/comic/:id", async (req, res) => {
       finalTotalChapters = 1;
     } else {
       // Multi-chapter - calculate total page count from all chapters
+      // Optimized: higher concurrency + caching
       if (source.comic && source.comic.loadEp) {
         try {
+          const startTime = Date.now();
+          
           // Collect all chapter IDs
           const allChapterIds = [];
           if (comicDetails.chapters instanceof Map) {
@@ -548,22 +578,53 @@ app.get("/comic/:id", async (req, res) => {
             allChapterIds.push(...Object.keys(comicDetails.chapters));
           }
           
-          // Fetch page count for each chapter (with concurrency limit)
-          const CONCURRENCY_LIMIT = 3;
-          for (let i = 0; i < allChapterIds.length; i += CONCURRENCY_LIMIT) {
-            const batch = allChapterIds.slice(i, i + CONCURRENCY_LIMIT);
+          // Fetch page count for each chapter (with higher concurrency limit + caching)
+          const CONCURRENCY_LIMIT = 10; // 提高并发限制从 3 到 10
+          const cacheHits = [];
+          const needsFetch = [];
+          
+          // 先检查缓存
+          for (const epId of allChapterIds) {
+            const cacheKey = `${sourceName}:${id}:${epId}`;
+            const cachedPageCount = getFromPageCountCache(cacheKey);
+            if (cachedPageCount !== null) {
+              cacheHits.push({ epId, pageCount: cachedPageCount });
+            } else {
+              needsFetch.push(epId);
+            }
+          }
+          
+          // 累加缓存命中的页数
+          for (const hit of cacheHits) {
+            finalPageCount += hit.pageCount;
+          }
+          
+          console.log(`[Page Count] Cache hits: ${cacheHits.length}/${allChapterIds.length}, needs fetch: ${needsFetch.length}`);
+          
+          // 只获取未缓存的章节页数
+          for (let i = 0; i < needsFetch.length; i += CONCURRENCY_LIMIT) {
+            const batch = needsFetch.slice(i, i + CONCURRENCY_LIMIT);
             const results = await Promise.allSettled(
-              batch.map(epId => source.comic.loadEp(id, epId))
+              batch.map(async (epId) => {
+                const epData = await source.comic.loadEp(id, epId);
+                const pageCount = epData.images ? epData.images.length : 0;
+                // 缓存结果
+                const cacheKey = `${sourceName}:${id}:${epId}`;
+                addToPageCountCache(cacheKey, pageCount);
+                return { epId, pageCount };
+              })
             );
             for (const result of results) {
-              if (result.status === 'fulfilled' && result.value.images) {
-                finalPageCount += result.value.images.length;
+              if (result.status === 'fulfilled') {
+                finalPageCount += result.value.pageCount;
               }
             }
           }
-          console.log(`Total page count calculated: ${finalPageCount} pages across ${allChapterIds.length} chapters`);
+          
+          const totalTime = Date.now() - startTime;
+          console.log(`[Page Count] Calculated: ${finalPageCount} pages across ${allChapterIds.length} chapters in ${totalTime}ms (cache: ${cacheHits.length})`);
         } catch (e) {
-          console.warn('Failed to calculate total page count:', e.message);
+          console.warn('[Page Count] Failed to calculate:', e.message);
           finalPageCount = 0;
         }
       }

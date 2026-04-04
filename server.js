@@ -144,6 +144,8 @@ async function processImageRequest(req, res) {
                     console.warn(`Failed to get image load config from source ${sourceName}:`, e.message);
                 }
             }
+        }
+  
 
     const targetWidth = parseInt(req.query.width) || 600
     const quality = parseInt(req.query.quality) || 50

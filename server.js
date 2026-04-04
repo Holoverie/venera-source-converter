@@ -124,24 +124,26 @@ async function processImageRequest(req, res) {
                 }
             }
             
-            // 2. 如果源有 onImageLoad 方法，也可以尝试调用它获取配置
-            // 注意：这需要 comicId 和 epId
-            /*
-            const comicId = req.query.comicId;
-            const epId = req.query.epId;
-            if (source.comic && source.comic.onImageLoad) {
-                try {
-                    const config = await Promise.resolve(source.comic.onImageLoad(imageUrl, comicId, epId));
+            // 2. 如果源有 onImageLoad 方法，尝试调用获取图片请求头
+            const comicId = req.query.comicId || null;
+            const epId = req.query.epId || null;
+
+            // 兼容 source.onImageLoad 和 source.comic.onImageLoad
+            const onImageLoad = source.onImageLoad || (source.comic && source.comic.onImageLoad);
+            if (onImageLoad) {
+              try {
+                    const config = await Promise.resolve(onImageLoad(imageUrl, comicId, epId));
                     if (config && config.headers) {
-                        Object.assign(requestHeaders, config.headers);
+                        const cleanImageHeaders = { ...config.headers };
+                        delete cleanImageHeaders['content-length'];
+                        delete cleanImageHeaders['host'];
+                        delete cleanImageHeaders['connection'];
+                        Object.assign(requestHeaders, cleanImageHeaders);
                     }
                 } catch (e) {
                     console.warn(`Failed to get image load config from source ${sourceName}:`, e.message);
                 }
             }
-            */
-        }
-    }
 
     const targetWidth = parseInt(req.query.width) || 600
     const quality = parseInt(req.query.quality) || 50
@@ -701,7 +703,7 @@ app.get("/photo/:id/chapter/:chapter", async (req, res) => {
     const response = {
       title: chapterTitle,
       images: epData.images.map((url, index) => ({
-        url: `${baseUrl}/proxy?url=${encodeURIComponent(url)}&width=${width}&quality=${quality}&source=${encodeURIComponent(sourceName)}`,
+        url: `${baseUrl}/proxy?url=${encodeURIComponent(url)}&width=${width}&quality=${quality}&source=${encodeURIComponent(sourceName)}&comicId=${encodeURIComponent(id)}&epId=${encodeURIComponent(epId)}`,
       })),
     };
 

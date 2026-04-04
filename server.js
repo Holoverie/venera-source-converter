@@ -131,7 +131,7 @@ async function processImageRequest(req, res) {
             // 兼容 source.onImageLoad 和 source.comic.onImageLoad
             const onImageLoad = source.onImageLoad || (source.comic && source.comic.onImageLoad);
             if (onImageLoad) {
-              try {
+                try {
                     const config = await Promise.resolve(onImageLoad(imageUrl, comicId, epId));
                     if (config && config.headers) {
                         const cleanImageHeaders = { ...config.headers };
@@ -145,6 +145,7 @@ async function processImageRequest(req, res) {
                 }
             }
         }
+    }
   
 
     const targetWidth = parseInt(req.query.width) || 600

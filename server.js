@@ -515,8 +515,7 @@ app.get("/comic/:id", async (req, res) => {
     }
 
     // Handle page count and chapter count logic:
-    // - Single chapter: return page_count from thumbnails/maxPage
-    // - Multi-chapter: fetch first chapter's page count via loadEp
+    // page_count = sum of all chapters' page counts (matches MangaDex API behavior)
     let finalPageCount = 0;
     let finalTotalChapters = totalChapters > 0 ? totalChapters : 1;
 
@@ -529,35 +528,42 @@ app.get("/comic/:id", async (req, res) => {
       }
       finalTotalChapters = 1;
     } else {
-      // Multi-chapter - get first chapter's page count
+      // Multi-chapter - calculate total page count from all chapters
       if (source.comic && source.comic.loadEp) {
         try {
-          // Find first chapter ID
-          let firstEpId = null;
+          // Collect all chapter IDs
+          const allChapterIds = [];
           if (comicDetails.chapters instanceof Map) {
             for (const [key, value] of comicDetails.chapters) {
               if (value instanceof Map) {
-                // Nested Map - get first chapter from first volume
+                // Nested Map - collect all chapter IDs from all volumes
                 for (const [chId] of value) {
-                  firstEpId = chId;
-                  break;
+                  allChapterIds.push(chId);
                 }
-                break;
               } else {
-                firstEpId = key;
-                break;
+                allChapterIds.push(key);
               }
             }
           } else if (typeof comicDetails.chapters === 'object') {
-            firstEpId = Object.keys(comicDetails.chapters)[0];
+            allChapterIds.push(...Object.keys(comicDetails.chapters));
           }
           
-          if (firstEpId) {
-            const epData = await source.comic.loadEp(id, firstEpId);
-            finalPageCount = epData.images ? epData.images.length : 0;
+          // Fetch page count for each chapter (with concurrency limit)
+          const CONCURRENCY_LIMIT = 3;
+          for (let i = 0; i < allChapterIds.length; i += CONCURRENCY_LIMIT) {
+            const batch = allChapterIds.slice(i, i + CONCURRENCY_LIMIT);
+            const results = await Promise.allSettled(
+              batch.map(epId => source.comic.loadEp(id, epId))
+            );
+            for (const result of results) {
+              if (result.status === 'fulfilled' && result.value.images) {
+                finalPageCount += result.value.images.length;
+              }
+            }
           }
+          console.log(`Total page count calculated: ${finalPageCount} pages across ${allChapterIds.length} chapters`);
         } catch (e) {
-          console.warn('Failed to get first chapter page count:', e.message);
+          console.warn('Failed to calculate total page count:', e.message);
           finalPageCount = 0;
         }
       }

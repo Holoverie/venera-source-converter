@@ -701,7 +701,7 @@ app.get("/photo/:id/chapter/:chapter", async (req, res) => {
     const response = {
       title: chapterTitle,
       images: epData.images.map((url, index) => ({
-        url: `${baseUrl}/proxy?url=${url}&width=${width}&quality=${quality}`,
+        url: `${baseUrl}/proxy?url=${encodeURIComponent(url)}&width=${width}&quality=${quality}&source=${encodeURIComponent(sourceName)}`,
       })),
     };
 

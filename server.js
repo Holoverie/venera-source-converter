@@ -799,6 +799,7 @@ app.get("/photo/:id/chapter/:chapter", async (req, res) => {
     // 转换为项目格式，添加代理 URL
     const response = {
       title: chapterTitle,
+      page_count: epData.images.length,  // 当前章节页数
       images: epData.images.map((url, index) => ({
         url: `${baseUrl}/proxy?url=${encodeURIComponent(url)}&width=${width}&quality=${quality}&source=${encodeURIComponent(sourceName)}&comicId=${encodeURIComponent(id)}&epId=${encodeURIComponent(epId)}`,
       })),
